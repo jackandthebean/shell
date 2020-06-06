@@ -263,6 +263,7 @@ int myOpenRedirection(char** output_path, int* output_fd, int* temp_fd) {
         bytes = read(*output_fd, file_buff, LINE_MAX);
     }
 
+    ftruncate(*output_fd, 0);
     lseek(*output_fd, 0, SEEK_SET);
     lseek(*temp_fd, 0, SEEK_SET);
     return SUCCESS;
