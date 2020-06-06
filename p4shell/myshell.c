@@ -64,7 +64,9 @@ char* trimWhiteSpace(char* string) {
         trailing--;
     *(trailing + 1) = '\0';
 
-    return strcpy(string, leading);
+    while ((*string++ = *leading++));
+
+    return string;
 }
 
 int isBlankLine(char* string) {
