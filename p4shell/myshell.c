@@ -273,7 +273,8 @@ void myExecuteCommandLine(char* line) {
             argv = myParseCommand(command, &output_path);
 
             if (redirection_mode != -1) {
-                myOpenRedirection(&output_path, &output_fd);
+                if (myOpenRedirection(&output_path, &output_fd))
+                    argv = NULL;
             }
 
             if (!(pid = fork())) {
