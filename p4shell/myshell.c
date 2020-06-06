@@ -130,6 +130,16 @@ int isValidRedirection(char* redir_path, char* redir_cmd) {
     return 1;
 }
 
+void copyToFile(int copy_fd, int original_fd) {
+    char file_buff[LINE_MAX];
+    ssize_t bytes;
+
+    while ((bytes = read(original_fd, file_buff, LINE_MAX)) > 0) {
+        write(copy_fd, file_buff, bytes);
+        bytes = read(original_fd, file_buff, LINE_MAX);
+    }
+}
+
 /* ========================================================================== */
 /* BUILT-IN COMMANDS ======================================================== */
 /* ========================================================================== */
@@ -241,9 +251,6 @@ char** myParseCommand(char* command, char** output_path) {
 }
 
 int myOpenRedirection(char** output_path, int* output_fd, int* temp_fd) {
-    char file_buff[LINE_MAX];
-    ssize_t bytes;
-
     if (redirection_mode == 1 || !isExistingFilePath(*output_path)) {
         if ((*output_fd = creat(*output_path, S_IRWXU)) < 0) {
             myError();
@@ -258,14 +265,10 @@ int myOpenRedirection(char** output_path, int* output_fd, int* temp_fd) {
     if ((*output_fd = open(*output_path, O_RDWR)) < 0)
         return FAILURE;
 
-    while ((bytes = read(*output_fd, file_buff, LINE_MAX)) > 0) {
-        write(*temp_fd, file_buff, bytes);
-        bytes = read(*output_fd, file_buff, LINE_MAX);
-    }
+    copyToFile(*temp_fd, *output_fd);
 
     ftruncate(*output_fd, 0);
     lseek(*output_fd, 0, SEEK_SET);
-    lseek(*temp_fd, 0, SEEK_SET);
     return SUCCESS;
 }
 
@@ -310,14 +313,9 @@ void myExecuteCommandLine(char* line) {
                 if (temp_fd) {
                     close(temp_fd);
                     close(output_fd);
-                    temp_fd = open("temp", O_RDONLY);
                     output_fd = open(output_path, O_WRONLY | O_APPEND);
-                    char file_buff[LINE_MAX];
-                    ssize_t bytes;
-                    while ((bytes = read(temp_fd, file_buff, LINE_MAX)) > 0) {
-                        write(output_fd, file_buff, bytes);
-                        bytes = read(temp_fd, file_buff, LINE_MAX);
-                    }
+                    temp_fd = open("temp", O_RDONLY);
+                    copyToFile(output_fd, temp_fd);
                 }
             }
         }
