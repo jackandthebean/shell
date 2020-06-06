@@ -1,9 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/wait.h>
 #include <sys/stat.h>
-#include <fcntl.h>
 #include <string.h>
 #include <ctype.h>
 
@@ -16,11 +14,6 @@
 
 /* GLOBALS */
 int batch_mode = 0;
-FILE* input_stream;
-
-char* output_path;
-int redirection_mode = -1, output_fd, temp_fd, read_bytes;
-char file_buff[LINE_MAX];
 
 /* BUILT-IN COMMANDS */
 char *built_in_cmds[] = {
@@ -49,6 +42,17 @@ char *redir_cmds[] = {
 /* ========================================================================== */
 /* HELPER FUNCTIONS ========================================================= */
 /* ========================================================================== */
+void myPrint(char* string) {
+    write(STDOUT_FILENO, string, strlen(string));
+    return;
+}
+
+void myError() {
+    char error_message[30] = "An error has occurred\n";
+    myPrint(error_message);
+    return;
+}
+
 char* trimWhiteSpace(char* string) {
     if (!string) {
         return NULL;
@@ -64,9 +68,7 @@ char* trimWhiteSpace(char* string) {
         trailing--;
     *(trailing + 1) = '\0';
 
-    while ((*string++ = *leading++));
-
-    return string;
+    return memmove((void*)string, (void*)leading, strlen(leading) + 1);
 }
 
 int isBlankLine(char* string) {
@@ -78,6 +80,11 @@ int isBlankLine(char* string) {
     return is_blank_line;
 }
 
+int isExistingFilePath(char* file_path) {
+    struct stat file_stats;
+    return !stat(file_path, &file_stats);
+}
+
 int isBuiltIn(char* command) {
     unsigned int i;
     for (i = 0; i < NUM_BUILT_IN; i++) {
@@ -85,34 +92,6 @@ int isBuiltIn(char* command) {
             return i;
     }
     return -1;
-}
-
-int isExistingFilePath(char* file_path) {
-    struct stat file_stats;
-    return !stat(file_path, &file_stats);
-}
-
-int isRedirection(char* command) {
-    unsigned int i;
-    for (i = 0; i < NUM_REDIR; i++) {
-        if (strstr(command, redir_cmds[i]))
-            return i;
-    }
-    return -1;
-}
-
-char* strrst(char* string, char* first) {
-    return strstr(string, first) + strlen(first);
-}
-
-int isValidRedirection(char* redir_path, char* redir_cmd) {
-    if (!strcmp(redir_path, ""))
-        return 0;
-    if (strchr(redir_path, '>') || strchr(redir_path, ' '))
-        return 0;
-    if (!strcmp(redir_cmd, ">") && isExistingFilePath(redir_path))
-        return 0;
-    return 1;
 }
 
 unsigned int getargc(char* command) {
@@ -124,18 +103,6 @@ unsigned int getargc(char* command) {
     }
     return argc + 1;
 }
-
-void myPrint(char* string) {
-    write(STDOUT_FILENO, string, strlen(string));
-    return;
-}
-
-void myError() {
-    char error_message[30] = "An error has occurred\n";
-    myPrint(error_message);
-    return;
-}
-
 
 /* ========================================================================== */
 /* BUILT-IN COMMANDS ======================================================== */
@@ -188,52 +155,39 @@ void mypwd(char* command) {
 /* ========================================================================== */
 /* THE SHELL ================================================================ */
 /* ========================================================================== */
-int myReadLine(char (*line_buff)[LINE_MAX], char** p) {
+int myReadLine(FILE** input_stream, char (*line_buff)[LINE_MAX], char** line_pntr) {
     // Read command line
-    *p = fgets(*line_buff, LINE_MAX, input_stream);
-    if (!(*p))
+    *line_pntr = fgets(*line_buff, LINE_MAX, *input_stream);
+    if (!(*line_pntr))
         exit(0);
 
     // Check if command line is of valid length
-    if (strchr(*p, '\n')) {
-        if (isBlankLine(*p))
+    if (strchr(*line_pntr, '\n')) {
+        if (isBlankLine(*line_pntr))
             return FAILURE;
 
         if (batch_mode)
-            myPrint(*p);
+            myPrint(*line_pntr);
 
-        *p = trimWhiteSpace(*p);
+        *line_pntr = trimWhiteSpace(*line_pntr);
         return SUCCESS;
     }
 
     // Handle command line of invalid length
-    while (!strchr(*p, '\n')) {
-        myPrint(*p);
-        *p = fgets(*line_buff, LINE_MAX, input_stream);
-        if (!(*p))
+    while (!strchr(*line_pntr, '\n')) {
+        myPrint(*line_pntr);
+        *line_pntr = fgets(*line_buff, LINE_MAX, *input_stream);
+        if (!(*line_pntr))
             exit(0);
     }
-    myPrint(*p);
+    myPrint(*line_pntr);
     myError();
     return FAILURE;
 }
 
 char** myParseCommand(char* command) {
     unsigned int argc, i;
-    int is_redir;
-    char* redir_cmd;
     char** argv;
-    if ((is_redir = isRedirection(command)) != -1) {
-        redir_cmd = redir_cmds[is_redir];
-        output_path = trimWhiteSpace(strrst(command, redir_cmd));
-        if (isValidRedirection(output_path, redir_cmd)) {
-            redirection_mode = is_redir;
-            command = trimWhiteSpace(strtok_r(command, redir_cmd, &command));
-        } else {
-            myError();
-            return NULL;
-        }
-    }
     argc = getargc(command);
     argv = (char**)malloc(sizeof(char*) * (argc + 1));
     for (i = 0; i < argc; i++) {
@@ -243,66 +197,41 @@ char** myParseCommand(char* command) {
     return argv;
 }
 
-int myRedirect() {
-    // Standard redirection and advanced redirection to a nonexistent file
-    if (redirection_mode == 1 || !isExistingFilePath(output_path)) {
-        if ((output_fd = creat(output_path, 0700)) < 0) {
-            myError();
-            return FAILURE;
-        }
-        dup2(output_fd, STDOUT_FILENO);
-        return SUCCESS;
-    }
-    return FAILURE;
-}
-
 void myExecuteCommandLine(char* line) {
     char* command = trimWhiteSpace(strtok_r(line, ";", &line));
     int is_built_in;
     char** argv;
     pid_t pid;
-    int status;
+
     while (command) {
         if ((is_built_in = isBuiltIn(command)) != -1) {
             built_in_fxns[is_built_in](command);
         } else {
             argv = myParseCommand(command);
-            pid = fork();
-            if (pid == 0) {
-                /*if (redirection_mode != -1) {
-                    if (myRedirect())
-                        exit(0);
-                }*/
+            if (!(pid = fork())) {
                 if (execvp(argv[0], argv) < 0)
                     myError();
-                /*if (!redirection_mode) {
-                    // check if you get here
-                    read_bytes = read(temp_fd, buff, LINE_MAX);
-                    while (read_bytes > 0) {
-                        write(output_fd, buff, LINE_MAX);
-                        read_bytes = read(temp_fd, buff, LINE_MAX);
-                    }
-                }*/
-                exit(0);
+                exit(1);
             } else {
-                while (wait(&status) != pid);
+                wait(NULL);
                 free(argv);
             }
         }
-        redirection_mode = -1;
         command = trimWhiteSpace(strtok_r(line, ";", &line));
     }
 }
 
 int main(int argc, char *argv[]) {
+    FILE* input_stream = stdin;
     char line_buff[LINE_MAX];
-    char *p;
-    input_stream = stdin;
+    char* line_pntr;
+
     // Shell can read at most one batch file at a time
     if (argc > 2) {
         myError();
         exit(1);
     }
+
     // Open the batch file for reading, if provided
     if (argc > 1) {
         batch_mode = 1;
@@ -312,15 +241,13 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
     }
+
     // Shell loop
     while (1) {
         // Shell prompt
         if (!batch_mode)
             myPrint("myshell> ");
-        // Read command line
-        if (!myReadLine(&line_buff, &p)) {
-            // Execute command line
-            myExecuteCommandLine(p);
-        }
+        if (!myReadLine(&input_stream, &line_buff, &line_pntr))
+            myExecuteCommandLine(line_pntr);
     }
 }
