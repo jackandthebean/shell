@@ -181,7 +181,8 @@ void mypwd(char* command) {
 /* ========================================================================== */
 /* THE SHELL ================================================================ */
 /* ========================================================================== */
-int myReadLine(FILE** input_stream, char (*line_buff)[LINE_MAX], char** line_pntr) {
+int myReadLine(FILE** input_stream, char (*line_buff)[LINE_MAX],
+               char** line_pntr) {
     // Read command line
     *line_pntr = fgets(*line_buff, LINE_MAX, *input_stream);
     if (!(*line_pntr))
@@ -239,17 +240,20 @@ char** myParseCommand(char* command, char** output_path) {
     return argv;
 }
 
-int myRedirect(char** output_path, int* output_fd) {
-    // Standard redirection and advanced redirection to a nonexistent file
+int myOpenRedirection(char** output_path, int* output_fd) {
     if (redirection_mode == 1 || !isExistingFilePath(*output_path)) {
         if ((*output_fd = creat(*output_path, 0700)) < 0) {
             myError();
             return FAILURE;
         }
-        dup2(*output_fd, STDOUT_FILENO);
         return SUCCESS;
     }
     return FAILURE;
+}
+
+int myRedirect(int* output_fd) {
+    dup2(*output_fd, STDOUT_FILENO);
+    return SUCCESS;
 }
 
 void myExecuteCommandLine(char* line) {
@@ -267,9 +271,14 @@ void myExecuteCommandLine(char* line) {
 
         } else {
             argv = myParseCommand(command, &output_path);
+
+            if (redirection_mode != -1) {
+                myOpenRedirection(&output_path, &output_fd);
+            }
+
             if (!(pid = fork())) {
                 if (redirection_mode != -1) {
-                    if(myRedirect(&output_path, &output_fd))
+                    if(myRedirect(&output_fd))
                         exit(1);
                 }
 
