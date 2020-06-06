@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/stat.h>
 #include <string.h>
 #include <ctype.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <fcntl.h>
 
 /* MACROS */
 #define SUCCESS 0
@@ -14,6 +16,7 @@
 
 /* GLOBALS */
 int batch_mode = 0;
+int redirection_mode = -1;
 
 /* BUILT-IN COMMANDS */
 char *built_in_cmds[] = {
@@ -104,6 +107,29 @@ unsigned int getargc(char* command) {
     return argc + 1;
 }
 
+int isRedirection(char* command) {
+    unsigned int i;
+    for (i = 0; i < NUM_REDIR; i++) {
+        if (strstr(command, redir_cmds[i]))
+            return i;
+    }
+    return -1;
+}
+
+char* strrst(char* string, char* first) {
+    return strstr(string, first) + strlen(first);
+}
+
+int isValidRedirection(char* redir_path, char* redir_cmd) {
+    if (!strcmp(redir_path, ""))
+        return 0;
+    if (strchr(redir_path, '>') || strchr(redir_path, ' '))
+        return 0;
+    if (!strcmp(redir_cmd, ">") && isExistingFilePath(redir_path))
+        return 0;
+    return 1;
+}
+
 /* ========================================================================== */
 /* BUILT-IN COMMANDS ======================================================== */
 /* ========================================================================== */
@@ -185,9 +211,25 @@ int myReadLine(FILE** input_stream, char (*line_buff)[LINE_MAX], char** line_pnt
     return FAILURE;
 }
 
-char** myParseCommand(char* command) {
+char** myParseCommand(char* command, char** output_path) {
+    int is_redir;
+    char* redir_cmd;
+
     unsigned int argc, i;
     char** argv;
+
+    if ((is_redir = isRedirection(command)) != -1) {
+        redir_cmd = redir_cmds[is_redir];
+        *output_path = trimWhiteSpace(strrst(command, redir_cmd));
+        if (isValidRedirection(*output_path, redir_cmd)) {
+            redirection_mode = is_redir;
+            command = trimWhiteSpace(strtok_r(command, redir_cmd, &command));
+        } else {
+            myError();
+            return NULL;
+        }
+    }
+
     argc = getargc(command);
     argv = (char**)malloc(sizeof(char*) * (argc + 1));
     for (i = 0; i < argc; i++) {
@@ -197,18 +239,40 @@ char** myParseCommand(char* command) {
     return argv;
 }
 
+int myRedirect(char** output_path, int* output_fd) {
+    // Standard redirection and advanced redirection to a nonexistent file
+    if (redirection_mode == 1 || !isExistingFilePath(*output_path)) {
+        if ((*output_fd = creat(*output_path, 0700)) < 0) {
+            myError();
+            return FAILURE;
+        }
+        dup2(*output_fd, STDOUT_FILENO);
+        return SUCCESS;
+    }
+    return FAILURE;
+}
+
 void myExecuteCommandLine(char* line) {
     char* command = trimWhiteSpace(strtok_r(line, ";", &line));
     int is_built_in;
     char** argv;
     pid_t pid;
 
+    char* output_path;
+    int output_fd;
+
     while (command) {
         if ((is_built_in = isBuiltIn(command)) != -1) {
             built_in_fxns[is_built_in](command);
+
         } else {
-            argv = myParseCommand(command);
+            argv = myParseCommand(command, &output_path);
             if (!(pid = fork())) {
+                if (redirection_mode != -1) {
+                    if(myRedirect(&output_path, &output_fd))
+                        exit(1);
+                }
+
                 if (execvp(argv[0], argv) < 0)
                     myError();
                 exit(1);
@@ -217,6 +281,8 @@ void myExecuteCommandLine(char* line) {
                 free(argv);
             }
         }
+
+        redirection_mode = -1;
         command = trimWhiteSpace(strtok_r(line, ";", &line));
     }
 }
