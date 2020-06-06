@@ -240,15 +240,32 @@ char** myParseCommand(char* command, char** output_path) {
     return argv;
 }
 
-int myOpenRedirection(char** output_path, int* output_fd) {
+int myOpenRedirection(char** output_path, int* output_fd, int* temp_fd) {
+    char file_buff[LINE_MAX];
+    ssize_t bytes;
+
     if (redirection_mode == 1 || !isExistingFilePath(*output_path)) {
-        if ((*output_fd = creat(*output_path, 0700)) < 0) {
+        if ((*output_fd = creat(*output_path, S_IRWXU)) < 0) {
             myError();
             return FAILURE;
         }
         return SUCCESS;
     }
-    return FAILURE;
+
+    if ((*temp_fd = creat("temp", S_IRWXU)) < 0)
+        return FAILURE;
+
+    if ((*output_fd = open(*output_path, O_RDWR)) < 0)
+        return FAILURE;
+
+    while ((bytes = read(*output_fd, file_buff, LINE_MAX)) > 0) {
+        write(*temp_fd, file_buff, bytes);
+        bytes = read(*output_fd, file_buff, LINE_MAX);
+    }
+
+    lseek(*output_fd, 0, SEEK_SET);
+    lseek(*temp_fd, 0, SEEK_SET);
+    return SUCCESS;
 }
 
 int myRedirect(int* output_fd) {
@@ -263,7 +280,7 @@ void myExecuteCommandLine(char* line) {
     pid_t pid;
 
     char* output_path;
-    int output_fd;
+    int output_fd, temp_fd = 0;
 
     while (command) {
         if ((is_built_in = isBuiltIn(command)) != -1) {
@@ -273,7 +290,7 @@ void myExecuteCommandLine(char* line) {
             argv = myParseCommand(command, &output_path);
 
             if (redirection_mode != -1) {
-                if (myOpenRedirection(&output_path, &output_fd))
+                if (myOpenRedirection(&output_path, &output_fd, &temp_fd))
                     argv = NULL;
             }
 
@@ -289,6 +306,18 @@ void myExecuteCommandLine(char* line) {
             } else {
                 wait(NULL);
                 free(argv);
+                if (temp_fd) {
+                    close(temp_fd);
+                    close(output_fd);
+                    temp_fd = open("temp", O_RDONLY);
+                    output_fd = open(output_path, O_WRONLY | O_APPEND);
+                    char file_buff[LINE_MAX];
+                    ssize_t bytes;
+                    while ((bytes = read(temp_fd, file_buff, LINE_MAX)) > 0) {
+                        write(output_fd, file_buff, bytes);
+                        bytes = read(temp_fd, file_buff, LINE_MAX);
+                    }
+                }
             }
         }
 
