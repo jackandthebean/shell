@@ -30,11 +30,11 @@ These instructions will get you a copy of the project up and running on your loc
 ### Run
 1. Clone this repo into your folder of choice.
     ```
-    git clone https://github.com/jackandthebean/shell.git
+    $ git clone https://github.com/jackandthebean/shell.git
     ```
 2. Change directories.
     ```
-    $ cd shell
+    $ cd shell/p4shell
     ```
 3. Compile the program.
     ```
