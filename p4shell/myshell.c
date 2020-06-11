@@ -53,8 +53,7 @@ void myPrint(char* string) {
 }
 
 void myError() {
-    char error_message[30] = "An error has occurred\n";
-    myPrint(error_message);
+    myPrint("An error has occurred\n");
     return;
 }
 
@@ -78,48 +77,61 @@ char* trimWhiteSpace(char* string) {
 
 int isBlankLine(char* string) {
     assert(string);
+
     int is_blank_line;
     char* string_dup = strdup(string);
     trimWhiteSpace(string_dup);
+
     is_blank_line = !(strcmp(string_dup, ""));
+
     free(string_dup);
+
     return is_blank_line;
 }
 
 int isExistingFilePath(char* file_path) {
     assert(file_path);
+
     struct stat file_stats;
+
     return !stat(file_path, &file_stats);
 }
 
 int isBuiltIn(char* command) {
     assert(command);
+
     unsigned int i;
+
     for (i = 0; i < NUM_BUILT_IN; i++) {
         if(!strncmp(command, built_in_cmds[i], strlen(built_in_cmds[i])))
             return i;
     }
+
     return -1;
 }
 
 unsigned int getargc(char* command) {
     assert(command);
+
     unsigned int argc = 0;
-    while (*command) {
+
+    for (; *command; command++) {
         if (*command == ' ')
             argc++;
-        command++;
     }
     return argc + 1;
 }
 
 int isRedirection(char* command) {
     assert(command);
+
     unsigned int i;
+
     for (i = 0; i < NUM_REDIR; i++) {
         if (strstr(command, redir_cmds[i]))
             return i;
     }
+
     return -1;
 }
 
@@ -130,12 +142,16 @@ char* strrst(char* string, char* first) {
 
 int isValidRedirection(char* redir_path, char* redir_cmd) {
     assert(redir_path && redir_cmd);
+
     if (!strcmp(redir_path, ""))
         return 0;
+
     if (strchr(redir_path, '>') || strchr(redir_path, ' '))
         return 0;
+
     if (!strcmp(redir_cmd, ">") && isExistingFilePath(redir_path))
         return 0;
+
     return 1;
 }
 
@@ -161,6 +177,7 @@ void copyToFile(int copy_fd, int original_fd) {
 /* ========================================================================== */
 void mycd(char* command) {
     assert(command);
+
     char* file_path;
     if (!command[2]) {
         chdir(getenv("HOME"));
@@ -180,6 +197,7 @@ void mycd(char* command) {
 
 void myexit(char* command) {
     assert(command);
+
     if (strcmp(command, "exit")) {
         myError();
         return;
@@ -190,6 +208,7 @@ void myexit(char* command) {
 
 void mypwd(char* command) {
     assert(command);
+
     if (strcmp(command, "pwd")) {
         myError();
         return;
@@ -203,7 +222,6 @@ void mypwd(char* command) {
         myPrint(cwd_buff);
         myPrint("\n");
         free(cwd_buff);
-        return;
     }
 }
 
@@ -213,16 +231,19 @@ void mypwd(char* command) {
 int myReadLine(FILE** input_stream, char (*line_buff)[LINE_MAX],
                char** line_pntr) {
     assert(input_stream && line_buff && line_pntr);
+
     // Read command line
     *line_pntr = fgets(*line_buff, LINE_MAX, *input_stream);
     if (!(*line_pntr))
         exit(0);
 
+    // Check if command line is blank
+    if (isBlankLine(*line_pntr))
+        return FAILURE;
+
+
     // Check if command line is of valid length
     if (strchr(*line_pntr, '\n')) {
-        if (isBlankLine(*line_pntr))
-            return FAILURE;
-
         if (batch_mode)
             myPrint(*line_pntr);
 
@@ -233,12 +254,15 @@ int myReadLine(FILE** input_stream, char (*line_buff)[LINE_MAX],
     // Handle command line of invalid length
     while (!strchr(*line_pntr, '\n')) {
         myPrint(*line_pntr);
+
         *line_pntr = fgets(*line_buff, LINE_MAX, *input_stream);
         if (!(*line_pntr))
             exit(0);
     }
     myPrint(*line_pntr);
+
     myError();
+
     return FAILURE;
 }
 
@@ -254,21 +278,26 @@ char** myParseCommand(char* command, char** output_path) {
     if ((is_redir = isRedirection(command)) != -1) {
         redir_cmd = redir_cmds[is_redir];
         *output_path = trimWhiteSpace(strrst(command, redir_cmd));
+
         if (isValidRedirection(*output_path, redir_cmd)) {
             redirection_mode = is_redir;
             command = trimWhiteSpace(strtok_r(command, redir_cmd, &command));
+
         } else {
             myError();
             return NULL;
+
         }
     }
 
     argc = getargc(command);
     argv = (char**)malloc(sizeof(char*) * (argc + 1));
+
     for (i = 0; i < argc; i++) {
         argv[i] = strtok_r(command, " ", &command);
     }
     argv[i] = NULL;
+
     return argv;
 }
 
@@ -307,13 +336,16 @@ int myOpenRedirection(char** output_path, int* output_fd, int* temp_fd) {
 
 int myRedirect(int* output_fd) {
     assert(output_fd);
+
     if (dup2(*output_fd, STDOUT_FILENO) < 0)
         return FAILURE;
-    return SUCCESS;
+    else
+        return SUCCESS;
 }
 
 void myExecuteCommandLine(char* line) {
     assert(line);
+
     char* command = trimWhiteSpace(strtok_r(line, ";", &line));
     int is_built_in;
     char** argv;
@@ -391,6 +423,7 @@ int main(int argc, char *argv[]) {
         // Shell prompt
         if (!batch_mode)
             myPrint("myshell> ");
+        // Read and execute command line
         if (!myReadLine(&input_stream, &line_buff, &line_pntr))
             myExecuteCommandLine(line_pntr);
     }
