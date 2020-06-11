@@ -140,14 +140,14 @@ int isValidRedirection(char* redir_path, char* redir_cmd) {
 }
 
 void copyToFile(int copy_fd, int original_fd) {
-    char file_buff[LINE_MAX];
+    char c_buff[1];
     ssize_t bytes;
 
-    while ((bytes = read(original_fd, file_buff, LINE_MAX)) > 0) {
-        if (write(copy_fd, file_buff, bytes) < 0)
-            perror("");
-        if ((bytes = read(original_fd, file_buff, LINE_MAX)) == -1)
-            perror("");
+    bytes = read(original_fd, c_buff, 1);
+
+    while (bytes > 0) {
+        write(copy_fd, c_buff, bytes);
+        bytes = read(original_fd, c_buff, 1);
     }
 
     if (close(copy_fd) < 0)
