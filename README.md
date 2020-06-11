@@ -3,7 +3,7 @@ Gaining exposure to the Linux programming environment and process interaction.
 
 ## Features
 ### Built-in Commands
-* `cd [dir]` (leave `[dir]` blank to change to the home directory)
+* `cd [dir]` (omit `[dir]` to change to the home directory)
 * `pwd`
 * `exit`
 
