@@ -159,11 +159,14 @@ void copyToFile(int copy_fd, int original_fd) {
     char c_buff[1];
     ssize_t bytes;
 
-    bytes = read(original_fd, c_buff, 1);
+    if ((bytes = read(original_fd, c_buff, 1)) < 0)
+        perror("copyToFile");
 
     while (bytes > 0) {
-        write(copy_fd, c_buff, bytes);
-        bytes = read(original_fd, c_buff, 1);
+        if (write(copy_fd, c_buff, bytes) < 0)
+            perror("copyToFile");
+        if ((bytes = read(original_fd, c_buff, 1)) < 0)
+            perror("copyToFile");
     }
 }
 
