@@ -159,16 +159,17 @@ int isValidRedirection(char* redir_path, char* redir_cmd) {
     return 1;
 }
 
-int appendToFile(int append_fd, int original_fd) {
+int appendToFile(char* append_path, char* original_path) {
+    assert(append_path && original_path);
 
     FILE *append_stream, *original_stream;
     char c;
 
-    if (!(append_stream = fdopen(append_fd, "a"))) {
+    if (!(append_stream = fopen(append_path, "a"))) {
         perror("appendToFile");
         return FAILURE;
     }
-    if (!(original_stream = fdopen(original_fd, "r"))) {
+    if (!(original_stream = fopen(original_path, "r"))) {
         perror("appendToFile");
         return FAILURE;
     }
@@ -317,13 +318,7 @@ int myOpenRedirection(char** output_path, int* output_fd, int* temp_fd) {
         return SUCCESS;
     }
 
-    if ((*temp_fd = open("temp", O_RDONLY)) < 0)
-        return FAILURE;
-
-    if ((*output_fd = open(*output_path, O_WRONLY | O_APPEND)) < 0)
-        return FAILURE;
-
-    appendToFile(*temp_fd, *output_fd);
+    appendToFile("temp", *output_path);
 
     if ((*temp_fd = open("temp", O_RDONLY)) < 0)
         return FAILURE;
@@ -382,12 +377,11 @@ void myExecuteCommandLine(char* line) {
                 wait(NULL);
                 free(argv);
                 if (temp_fd) {
-                    appendToFile(output_fd, temp_fd);
                     if (close(temp_fd) < 0)
                         perror("");
                     if (close(output_fd) < 0)
                         perror("");
-
+                    appendToFile(output_path, "temp");
                 }
             }
         }
