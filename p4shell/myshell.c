@@ -27,11 +27,11 @@ char *built_in_cmds[] = {
 };
 
 /* BUILT-IN COMMAND FUNCTIONS */
-void mycd(char* command);
-void myexit(char* command);
-void mypwd(char* command);
+int mycd(char* command);
+int myexit(char* command);
+int mypwd(char* command);
 
-void (*built_in_fxns[])(char*) = {
+int (*built_in_fxns[])(char*) = {
     &mycd,
     &myexit,
     &mypwd
@@ -78,121 +78,153 @@ char* trimWhiteSpace(char* string) {
 
 int isBlankLine(char* string) {
     assert(string);
+
     int is_blank_line;
     char* string_dup = strdup(string);
+
     trimWhiteSpace(string_dup);
     is_blank_line = !(strcmp(string_dup, ""));
+
     free(string_dup);
+
     return is_blank_line;
 }
 
 int isExistingFilePath(char* file_path) {
     assert(file_path);
+
     struct stat file_stats;
+
     return !stat(file_path, &file_stats);
 }
 
 int isBuiltIn(char* command) {
     assert(command);
+
     unsigned int i;
+
     for (i = 0; i < NUM_BUILT_IN; i++) {
         if(!strncmp(command, built_in_cmds[i], strlen(built_in_cmds[i])))
             return i;
     }
+
     return -1;
 }
 
 unsigned int getargc(char* command) {
     assert(command);
+
     unsigned int argc = 0;
+
     while (*command) {
         if (*command == ' ')
             argc++;
         command++;
     }
+
     return argc + 1;
 }
 
 int isRedirection(char* command) {
     assert(command);
+
     unsigned int i;
+
     for (i = 0; i < NUM_REDIR; i++) {
         if (strstr(command, redir_cmds[i]))
             return i;
     }
+
     return -1;
 }
 
 char* strrst(char* string, char* first) {
     assert(string && first);
+
     return strstr(string, first) + strlen(first);
 }
 
 int isValidRedirection(char* redir_path, char* redir_cmd) {
     assert(redir_path && redir_cmd);
+
     if (!strcmp(redir_path, ""))
         return 0;
+
     if (strchr(redir_path, '>') || strchr(redir_path, ' '))
         return 0;
+
     if (!strcmp(redir_cmd, ">") && isExistingFilePath(redir_path))
         return 0;
+
     return 1;
 }
 
-void copyToFile(int copy_fd, int original_fd) {
-    char file_buff[LINE_MAX];
-    ssize_t bytes;
+int appendToFile(char* append_path, char* original_path) {
+    assert(append_path && original_path);
 
-    while ((bytes = read(original_fd, file_buff, LINE_MAX)) > 0) {
-        if (write(copy_fd, file_buff, bytes) < 0)
-            perror("");
-        if ((bytes = read(original_fd, file_buff, LINE_MAX)) == -1)
-            perror("");
+    FILE *append_stream, *original_stream;
+    char c;
+
+    if (!(append_stream = fopen(append_path, "a"))) {
+        perror("appendToFile");
+        return FAILURE;
+    }
+    if (!(original_stream = fopen(original_path, "r"))) {
+        perror("appendToFile");
+        return FAILURE;
     }
 
-    if (close(copy_fd) < 0)
-        perror("");
-    if (close(original_fd) < 0)
-        perror("");
+    while ((c = fgetc(original_stream)) != EOF) {
+        fputc(c, append_stream);
+    }
+
+    fclose(append_stream);
+    fclose(original_stream);
+
+    return SUCCESS;
 }
 
 /* ========================================================================== */
 /* BUILT-IN COMMANDS ======================================================== */
 /* ========================================================================== */
-void mycd(char* command) {
+int mycd(char* command) {
     assert(command);
+
     char* file_path;
+
     if (!command[2]) {
         chdir(getenv("HOME"));
-        return;
+        return SUCCESS;
     }
 
     if ((file_path = trimWhiteSpace(strchr(command, ' ')))) {
         if (isExistingFilePath(file_path)) {
             chdir(file_path);
-            return;
+            return SUCCESS;
         }
     }
 
     myError();
-    return;
+    return FAILURE;
 }
 
-void myexit(char* command) {
+int myexit(char* command) {
     assert(command);
+
     if (strcmp(command, "exit")) {
         myError();
-        return;
+        return FAILURE;
     }
 
     exit(0);
 }
 
-void mypwd(char* command) {
+int mypwd(char* command) {
     assert(command);
+
     if (strcmp(command, "pwd")) {
         myError();
-        return;
+        return FAILURE;
     }
 
     size_t cwd_len = (size_t)pathconf(".", _PC_PATH_MAX);
@@ -203,8 +235,10 @@ void mypwd(char* command) {
         myPrint(cwd_buff);
         myPrint("\n");
         free(cwd_buff);
-        return;
+        return SUCCESS;
     }
+
+    return FAILURE;
 }
 
 /* ========================================================================== */
@@ -218,11 +252,12 @@ int myReadLine(FILE** input_stream, char (*line_buff)[LINE_MAX],
     if (!(*line_pntr))
         exit(0);
 
+    // Check if command line is blank
+    if (isBlankLine(*line_pntr))
+        return FAILURE;
+
     // Check if command line is of valid length
     if (strchr(*line_pntr, '\n')) {
-        if (isBlankLine(*line_pntr))
-            return FAILURE;
-
         if (batch_mode)
             myPrint(*line_pntr);
 
@@ -273,33 +308,25 @@ char** myParseCommand(char* command, char** output_path) {
 }
 
 int myOpenRedirection(char** output_path, int* output_fd, int* temp_fd) {
-    assert(output_path && output_fd && temp_fd);
+    assert(output_path && output_fd && temp_fd && redirection_mode != -1);
+
     if (redirection_mode == 1 || !isExistingFilePath(*output_path)) {
-        if ((*output_fd = creat(*output_path, S_IRWXU)) < 0) {
+        if ((*output_fd = creat(*output_path, S_IWUSR)) < 0) {
             myError();
             return FAILURE;
         }
         return SUCCESS;
     }
 
-    if ((*temp_fd = creat("temp", S_IRWXU)) < 0)
-        return FAILURE;
-
-    if ((*output_fd = open(*output_path, O_RDWR)) < 0)
-        return FAILURE;
-
-    copyToFile(*temp_fd, *output_fd);
+    appendToFile("temp", *output_path);
 
     if ((*temp_fd = open("temp", O_RDONLY)) < 0)
         return FAILURE;
 
-    if ((*output_fd = open(*output_path, O_RDWR)) < 0)
+    if ((*output_fd = open(*output_path, O_WRONLY | O_APPEND)) < 0)
         return FAILURE;
 
     if (ftruncate(*output_fd, 0) < 0)
-        return FAILURE;
-
-    if (lseek(*output_fd, 0, SEEK_SET) < 0)
         return FAILURE;
 
     return SUCCESS;
@@ -307,13 +334,16 @@ int myOpenRedirection(char** output_path, int* output_fd, int* temp_fd) {
 
 int myRedirect(int* output_fd) {
     assert(output_fd);
+
     if (dup2(*output_fd, STDOUT_FILENO) < 0)
         return FAILURE;
+
     return SUCCESS;
 }
 
 void myExecuteCommandLine(char* line) {
     assert(line);
+
     char* command = trimWhiteSpace(strtok_r(line, ";", &line));
     int is_built_in;
     char** argv;
@@ -351,11 +381,7 @@ void myExecuteCommandLine(char* line) {
                         perror("");
                     if (close(output_fd) < 0)
                         perror("");
-                    if ((output_fd = open(output_path, O_WRONLY | O_APPEND)) < 0)
-                        perror("");
-                    if ((temp_fd = open("temp", O_RDONLY)) < 0)
-                        perror("");
-                    copyToFile(output_fd, temp_fd);
+                    appendToFile(output_path, "temp");
                 }
             }
         }
