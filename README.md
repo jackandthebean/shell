@@ -22,7 +22,7 @@ myshell> ls -la /tmp > output
 Functions similarly to redirection of standard output, except standard output is **prepended** to existing content if the file already exists.
 
 ### Batch Mode
-Specify a "batch file" of command lines to execute instead of interacting with the shell to execute command lines, as demonstrated below.
+Specify a "batch file" of command lines to execute instead of interacting with the shell to execute command lines. Some example batch files are provided in the `p4shell/batch-files` directory.
 
 ## Getting Started
 These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. Have fun!
