@@ -300,7 +300,6 @@ int myOpenRedirection(char** output_path, int* output_fd, int* temp_fd) {
     assert(output_path && output_fd && temp_fd);
     if (redirection_mode == 1 || !isExistingFilePath(*output_path)) {
         if ((*output_fd = creat(*output_path, S_IRWXU)) < 0) {
-            myError();
             return FAILURE;
         }
         return SUCCESS;
@@ -348,8 +347,10 @@ void myExecuteCommandLine(char* line) {
             argv = myParseCommand(command, &output_path);
 
             if (redirection_mode != -1) {
-                if (myOpenRedirection(&output_path, &output_fd, &temp_fd))
+                if (myOpenRedirection(&output_path, &output_fd, &temp_fd)) {
+                    myError();
                     argv = NULL;
+                }
             }
 
             if (!(pid = fork())) {
@@ -364,11 +365,7 @@ void myExecuteCommandLine(char* line) {
             } else {
                 wait(NULL);
                 free(argv);
-                if (temp_fd) {/*
-                    if (close(temp_fd) < 0)
-                        perror("");
-                    if (close(output_fd) < 0)
-                        perror("");*/
+                if (temp_fd) {
                     if ((output_fd = open(output_path, O_WRONLY | O_APPEND)) < 0)
                         perror("");
                     if ((temp_fd = open("temp", O_RDONLY)) < 0)
