@@ -1,0 +1,3 @@
+ls > gooduser_redirection_rd_1
+ls ../ >+ gooduser_redirection_rd_1
+exit

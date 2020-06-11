@@ -1,0 +1,9 @@
+cd ../../../; pwd; cd /
+pwd
+cd ../
+pwd
+  
+	
+
+cal 10 2008; pwd; pwd
+exit
