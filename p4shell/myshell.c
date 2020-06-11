@@ -165,11 +165,6 @@ void copyToFile(int copy_fd, int original_fd) {
         write(copy_fd, c_buff, bytes);
         bytes = read(original_fd, c_buff, 1);
     }
-
-    if (close(copy_fd) < 0)
-        perror("");
-    if (close(original_fd) < 0)
-        perror("");
 }
 
 /* ========================================================================== */
@@ -311,24 +306,15 @@ int myOpenRedirection(char** output_path, int* output_fd, int* temp_fd) {
         return SUCCESS;
     }
 
-    if ((*temp_fd = creat("temp", S_IRWXU)) < 0)
+    if ((*temp_fd = creat("temp", S_IRUSR | S_IWUSR)) < 0)
         return FAILURE;
 
-    if ((*output_fd = open(*output_path, O_RDWR)) < 0)
+    if ((*output_fd = open(*output_path, O_RDWR | O_APPEND)) < 0)
         return FAILURE;
 
     copyToFile(*temp_fd, *output_fd);
 
-    if ((*temp_fd = open("temp", O_RDONLY)) < 0)
-        return FAILURE;
-
-    if ((*output_fd = open(*output_path, O_RDWR)) < 0)
-        return FAILURE;
-
     if (ftruncate(*output_fd, 0) < 0)
-        return FAILURE;
-
-    if (lseek(*output_fd, 0, SEEK_SET) < 0)
         return FAILURE;
 
     return SUCCESS;
@@ -378,11 +364,11 @@ void myExecuteCommandLine(char* line) {
             } else {
                 wait(NULL);
                 free(argv);
-                if (temp_fd) {
+                if (temp_fd) {/*
                     if (close(temp_fd) < 0)
                         perror("");
                     if (close(output_fd) < 0)
-                        perror("");
+                        perror("");*/
                     if ((output_fd = open(output_path, O_WRONLY | O_APPEND)) < 0)
                         perror("");
                     if ((temp_fd = open("temp", O_RDONLY)) < 0)
